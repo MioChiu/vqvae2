@@ -19,13 +19,15 @@ def train(epoch, dataloader, model, optimizer, scheduler, device):
     latent_loss_weight = 0.2
     sample_size = 8
 
-    for i, (img, label) in enumerate(pbar):
+    for i, (img, label, img0) in enumerate(pbar):
         model.zero_grad()
 
         img = img.to(device)
+        img0 = img0.to(device)
 
         out, latent_loss, _, _ = model(img)
-        recon_loss = criterion(out, img)
+        # recon_loss = criterion(out, img)
+        recon_loss = criterion(out, img0)
         latent_loss = latent_loss.mean()
         loss = recon_loss + latent_loss_weight * latent_loss
         loss.backward()
@@ -121,11 +123,11 @@ if __name__ == "__main__":
                         default=8)
     parser.add_argument('--input_size',
                         type=int,
-                        default=512,
+                        default=640,
                         help='input image size.')
     parser.add_argument('--classes',
                         type=list,
-                        default=['hazelnut'],
+                        default=['capsule'],
                         help='classes.')
     parser.add_argument('--gpu_ids',
                         type=str,
@@ -145,7 +147,7 @@ if __name__ == "__main__":
                         help='frequency of saving model')
     parser.add_argument('--ckpt_dir',
                         type=str,
-                        default='./checkpoint/hazelnut',
+                        default='./checkpoint/capsule',
                         help='ckpt dir')
     parser.add_argument("--sched", type=str, default='cycle')
 

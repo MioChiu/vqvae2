@@ -48,7 +48,7 @@ class MvtecDataset(data.Dataset):
         else:
             if self.classes is None:
                 self.classes = self.category_dict.keys()
-            assert self.classes in self.category_dict.keys()
+            assert set(self.classes) <= set(list(self.category_dict.keys()))
             for c in self.classes:
                 cls_path = os.path.join(self.root, 'txt', c + '_test.txt')
                 with open(cls_path, 'r') as f:
@@ -59,14 +59,19 @@ class MvtecDataset(data.Dataset):
     def __getitem__(self, index):
         img_path, label = self.data_list[index].strip().split(' ')
         img = Image.open(img_path)
+        img0 = img.copy()
+        img0 = img0.convert('RGB')
+        img = img.convert('L')
         img = img.convert('RGB')
+        
         target = self.category_dict[label]
         if self.transform is not None:
             img = self.transform(img)
+            img0 = self.transform(img0)
         if self.target_transform is not None:
             target = self.target_transform(target)
-
-        return img, target
+      
+        return img, target, img0
 
     def __len__(self):
         return len(self.data_list)

@@ -10,6 +10,7 @@ from torchvision import datasets, transforms, utils
 from tqdm import tqdm
 from vqvae import VQVAE
 from torch.autograd import Variable
+from dataset import MvtecDataset
 
 def load_model(checkpoint, device):
     ckpt = torch.load(os.path.join('checkpoint', checkpoint))
@@ -32,15 +33,14 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch', type=int, default=1)
-    parser.add_argument('--weights', type=str, default='capsule/vqvae_500.pt')
-    parser.add_argument('--data_path', type=str, default='/mnt/qiuzheng/data/mvtec/capsule/test')
+    parser.add_argument('--weights', type=str, default='carpet/vqvae_240.pt')
+    parser.add_argument('--data_path', type=str, default='/mnt/qiuzheng/data/mvtec')
     parser.add_argument('--save_path', type=str, default='./results')
     args = parser.parse_args()
 
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
     model = load_model(args.weights, device)
-
 
     transform = transforms.Compose(
         [
@@ -50,17 +50,18 @@ if __name__ == '__main__':
         ]
     )
 
-    dataset = datasets.ImageFolder(args.data_path, transform=transform)
-    print(dataset.class_to_idx)
+    dataset = MvtecDataset(args.data_path, train=False, transform=transform, classes=['capsule'])
     dataloader = torch.utils.data.DataLoader(dataset,
-                                            batch_size=args.batch,
-                                            shuffle=False,
-                                            num_workers=4)
-    for i, (img, label) in enumerate(dataloader):
+                                             batch_size=args.batch,
+                                             shuffle=False,
+                                             num_workers=4)
+
+    criterion = torch.nn.MSELoss(reduction='none')
+    for i, (img, label, im0) in enumerate(dataloader):
         img = img.to(device)
         out, _, min_dist_t, min_dist_b = model(img)
         # save_image(torch.cat([img, out], 0), os.path.join(args.save_path, str(i) + '.png'), normalize=True, range=(-1, 1))
-        draw_img = torch.squeeze(img).mul(0.5).add_(0.5).mul(255).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy().copy()
+        draw_img = torch.squeeze(im0).mul(0.5).add_(0.5).mul(255).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy().copy()
         draw_out = torch.squeeze(out).mul(0.5).add_(0.5).mul(255).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy().copy()
 
         cv2.imwrite('./results/' + str(i) + '_ori.png', draw_img)
@@ -70,14 +71,14 @@ if __name__ == '__main__':
 
         img1 = torch.from_numpy(np.rollaxis(img1, 2)).float().unsqueeze(0).cuda()/255.0
         img2 = torch.from_numpy(np.rollaxis(img2, 2)).float().unsqueeze(0).cuda()/255.0
+        recon_loss = criterion(img2, img1).mean(1).squeeze().detach().cpu().numpy()
+        ssimloss = pytorch_ssim.ssim(img1, img2, size_average=False).squeeze().detach().cpu().numpy()
+        # print(torch.min(ssimloss))
 
-        print(pytorch_ssim.ssim(img1, img2, size_average=False))
+        # ssim_loss = pytorch_ssim.SSIM(window_size=11)
+        # ssimloss= ssim_loss(img1, img2)
+        # print(ssim_loss(img1, img2))
 
-        ssim_loss = pytorch_ssim.SSIM(window_size=11)
-
-        print(ssim_loss(img1, img2))
-        if i == 3:
-            break
         #draw = np.resize(draw, [768, 768])
         # for i in range(1, 32):
         #     out[i * 8, :, :] = 0
@@ -89,14 +90,21 @@ if __name__ == '__main__':
         heatmapshow = cv2.normalize(min_dist_b, heatmapshow, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
         heatmapshow = cv2.applyColorMap(heatmapshow, cv2.COLORMAP_JET)
         
+        heatmapssim = None
+        heatmapssim = cv2.normalize(ssimloss, heatmapssim, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        heatmapssim = cv2.applyColorMap(heatmapshow, cv2.COLORMAP_JET)
 
+        heatmapmse = None
+        heatmapmse = cv2.normalize(recon_loss, heatmapmse, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        heatmapmse = cv2.applyColorMap(heatmapshow, cv2.COLORMAP_JET)
         # cv2.imwrite('1.jpg', draw)
         # for y in range(32):
         #     for x in  range(32):
         #         text = str(min_dist_t[y][x])
         #         cv2.putText(draw, text, (x * 24 + 2, y * 24 + 2), cv2.FONT_HERSHEY_COMPLEX, 0.1, (100, 200, 200), 1)
         cv2.imwrite('./results/' + str(i) + '_heat.png', heatmapshow)
-        cv2.imwrite('./results/' + str(i) + '_diff.png', draw_img - draw_out)
+        cv2.imwrite('./results/' + str(i) + '_ssim.png', heatmapssim)
+        cv2.imwrite('./results/' + str(i) + '_diff.png', heatmapmse)
         # cv2.imwrite('./res/' + str(i) + '.png', draw)
         
 
